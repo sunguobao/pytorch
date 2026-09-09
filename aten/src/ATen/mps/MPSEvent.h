@@ -4,7 +4,6 @@
 
 #include <ATen/mps/MPSStream.h>
 #include <c10/util/intrusive_ptr.h>
-#include <ctime>
 #include <stack>
 
 namespace at::mps {
@@ -35,8 +34,14 @@ class MPSEvent {
     return m_id;
   }
   // returns the completion timestamp of the event
-  uint64_t getCompletionTime() const {
+  double getCompletionTime() const {
     return m_completion_time;
+  }
+  bool isTimingEnabled() const {
+    return m_enable_timing;
+  }
+  bool isRecorded() const {
+    return m_signalCounter > 0;
   }
   // if already recorded, waits for cpu_sync_cv to be signaled
   void waitForCpuSync();
@@ -52,18 +57,16 @@ class MPSEvent {
   // used to sync the events created on this Stream with CPU
   std::mutex m_cpu_sync_mutex{};
   std::condition_variable m_cpu_sync_cv{};
-  // CondVar predicate to sync the events created on this Stream with CPU
-  bool m_cpu_sync_completed = false;
+  // Last signal value whose timing callback has completed.
+  uint64_t m_timing_completed = 0;
+  uint64_t m_timing_generation = 0;
   // used to compute elapsed time
-  uint64_t m_completion_time = 0;
+  double m_completion_time = 0.0;
 
   void recordLocked(bool syncEvent);
   bool waitLocked(bool syncEvent);
   bool notifyLocked(MTLSharedEventNotificationBlock block);
-  void notifyCpuSync();
-  static uint64_t getTime() {
-    return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW);
-  }
+  void notifyCpuSync(uint64_t timingGeneration, double completionTime);
 };
 
 class MPSEventPool;
